@@ -1,55 +1,106 @@
-var express = require('express')
-var app = express();
-app.use(express.json());
-app.use(router);
+const { json } = require('express');
+const express = require('express');
+const app = express();
+const jwt = require('jsonwebtoken');
+const bodyParser = require('body-parser');
+app.use(bodyParser.json());
 
-
-const mysql = require('mysql')
-const connection = mysql.createConnection({
-    host: 'localhost',
-    user: 'dbuser',
-    password: 's3kreee7',
-    database: 'my_db'
-})
-
-async function getUserByUsername(username) {
-    const connection = await connection.connect();
-
-    try {
-        const [rows, fields] = await connection.execute('CALL get_user_by_username(?)', [username]);
-        return rows[0][0];
-    } finally {
-        connection.release();
+const mysql = require('mysql2');
+const pool = mysql.createPool({
+    host: 'stepchatgptdbmysql.mysql.database.azure.com',
+    user: 'stepadmin',
+    password: 'AD@devdb2023',
+    database: 'chatgptdb',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    ssl: {
+        rejectUnauthorized: false
     }
-}
+});
 
+app.get('/api/chat/:message', async function (req, res) {
+    const { Configuration, OpenAIApi } = require("openai");
 
+    const configuration = new Configuration({
+        apiKey: "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",
+    });
+    const openai = new OpenAIApi(configuration);
 
-router.post('/login', async (req, res) => {
-    const { username, password } = req.body;
-    const user = await getUserByUsername(username);
+    const response = await openai.createCompletion({
+        model: "text-davinci-003",
+        prompt: req.params.message,
+        temperature: 0.7,
+        max_tokens: 256,
+        top_p: 1,
+        frequency_penalty: 0,
+        presence_penalty: 0,
+    });
+    const message = response.data.choices[0].text.trim();
+    console.log('ChatGPT response:', message);
+    res.send(message);
 
-    if (!user) {
-        return res.status(401).json({ error: 'Invalid username or password' });
-    }
-
-    const token = jwt.sign({ userId: user.id }, 'secret');
-    res.json({ token });
 });
 
 
-app.get('/user/:id', function (req, res) {
-    connection.connect();
+app.post('/api/login', (req, res) => {
+    const { u_USERNAME, u_PASSWORD } = req.body;
 
-    connection.query('SELECT 1 + 1 AS solution', (err, rows, fields) => {
+    pool.query('CALL Login(?,?, @u_ID)', [u_USERNAME, u_PASSWORD], function (error, results, fields) {
+        if (error) {
+            res.json({ message: error.sqlMessage });
+        } else {
+
+            // fetch the output parameter value from the connection
+            pool.query('SELECT @u_ID', function (error, results, fields) {
+                if (error) throw error;
+                id = results[0]['@u_ID'];
+                console.log('id:', id);
+                const token = jwt.sign({ userId: id }, 'secret');
+                res.json({ token });
+                //res.json(id);
+            });
+        }
+    });
+});
+
+app.get('/users', function (req, res) {
+    pool.query('SELECT * from users', (err, rows, fields) => {
         if (err) throw err
 
-        console.log('The solution is: ', rows[0].solution)
+        console.log(rows);
+        res.json({ rows });
     });
-
-    connection.end()
-    res.send('user ' + req.params.id)
 });
+
+app.get('/users/:id', function (req, res) {
+    pool.query('SELECT * from users where user_id=' + req.params.id, (err, rows, fields) => {
+        if (err) throw err
+
+        res.json({ rows });
+    });
+});
+
+app.post('/api/register', (req, res) => {
+
+    const { USER_NAME, LOGIN_USERNAME, LOGIN_PASSWORD } = req.body;
+
+    pool.query('CALL Registration(?, ?, ?, @USER_ID)', [USER_NAME, LOGIN_USERNAME, LOGIN_PASSWORD], function (error, results, fields) {
+        if (error) {
+            res.json({ message: error.sqlMessage });
+        } else {
+
+            // fetch the output parameter value from the connection
+            pool.query('SELECT @USER_ID', function (error, results, fields) {
+                if (error) throw error;
+                id = results[0]['@USER_ID'];
+                res.json({ id: id });
+                //res.json(id);
+            });
+        }
+    });
+});
+
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Listening on port ${port}...`));
