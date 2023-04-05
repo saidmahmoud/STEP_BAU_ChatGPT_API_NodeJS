@@ -23,7 +23,7 @@ app.get('/api/chat/:message', async function (req, res) {
     const { Configuration, OpenAIApi } = require("openai");
 
     const configuration = new Configuration({
-        apiKey: "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",
+        apiKey: "sk-KyYzLfnCbbbbbbKdmEhPDOZimiT3BlbkFJ2Ym1Oa8esLYxWYQivT6k",
     });
     const openai = new OpenAIApi(configuration);
 
